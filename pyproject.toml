@@ -4,17 +4,18 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "keypad-io"
-version = "0.0.1"
+version = "0.0.1.post1"
 authors = [
-  { name="Jose Guaro", email="anothertypemonkey@gmail.com" },
+  { name="TypeMonkey", email="anothertypemonkey@gmail.com" },
 ]
 description = "An event-based Python keypad library for the Raspberry Pi"
 readme = "README.md"
 requires-python = ">=3.11"
 classifiers = [
     "Programming Language :: Python :: 3",
-    "Operating System :: OS Independent",
     "License :: OSI Approved :: GNU General Public License v3 (GPLv3)",
+    "Intended Audience :: Education",
+    "Topic :: System :: Hardware"
 ]
 
 [project.urls]
