@@ -1,0 +1,22 @@
+[build-system]
+requires = ["setuptools>=61.0", "RPi.GPIO==0.7.1"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "keypad-io"
+version = "0.0.1"
+authors = [
+  { name="Jose Guaro", email="anothertypemonkey@gmail.com" },
+]
+description = "An event-based Python keypad library for the Raspberry Pi"
+readme = "README.md"
+requires-python = ">=3.11"
+classifiers = [
+    "Programming Language :: Python :: 3",
+    "Operating System :: OS Independent",
+    "License :: OSI Approved :: GNU General Public License v3 (GPLv3)",
+]
+
+[project.urls]
+Homepage = "https://github.com/TypeMonkey/keypad-io"
+Issues = "https://github.com/TypeMonkey/keypad-io/issues"

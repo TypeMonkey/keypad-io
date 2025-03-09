@@ -1,18 +1,19 @@
 import RPi.GPIO as GPIO
 import time
 import signal
-from typing import Callable
-from threading import Thread, Event, Self, Sequence
+from typing import Callable, Self, Sequence, Any, cast
+from threading import Thread, Event
+import logging
 
 class Keypad:
   in_pins: list[int]
   out_pins: list[int]
-  char_matrix: list[list[tuple[str]]]
+  char_matrix: list[list[Sequence[str]]]
   poll_thread: Thread
   poll_sleeper: Event
   key_delay: int
   secondary_max_gap: int
-  __listeners__: list[Callable[[str], any]]
+  __listeners__: list[Callable[[str, int, int], Any]]
 
   """
   tuple[list[str], int, int]
@@ -20,7 +21,7 @@ class Keypad:
   -> int - nanoseconds the key was captured
   -> int - index on list[str] that was the capture key
   """
-  __key_map__: list[list[tuple[tuple[str], int, int]]]
+  __key_map__: list[list[tuple[Sequence[str], int, int]]]
 
   __is_closed__: bool
   
@@ -28,12 +29,12 @@ class Keypad:
     self, 
     ins: list[int], 
     outs: list[int], 
-    char_matrix: list[list[str | tuple[str]]], 
+    char_matrix: list[list[str | Sequence[str]]], 
     poll: bool = False,
     key_delay: int = 100,
     secondary_max_gap: int = 200,
     stop_immediate: bool = True,
-    initial_listeners: list[Callable[[str, int, int], any]] = []):
+    initial_listeners: list[Callable[[str, int, int], Any]] = []):
     """
     Creates a Keypad
 
@@ -61,7 +62,7 @@ class Keypad:
 
     self.in_pins = ins
     self.out_pins = outs
-    self.char_matrix = [[(x) if isinstance(x, str) else x for x in h] for h in char_matrix]
+    self.char_matrix = [[(x,) if isinstance(x, str) else x for x in h] for h in char_matrix]
 
     if poll:
       self.poll_thread = Thread(target=self.__poll_target_func__) if poll else None
@@ -85,10 +86,10 @@ class Keypad:
     else:
       GPIO.setup(self.in_pins, GPIO.IN, pull_up_down=GPIO.PUD_DOWN)
 
-    print("ins: ", ins)
-    print("outs: ", outs)
+    logging.info("Input pins: ", ins)
+    logging.info("Output pins: ", outs)
 
-  def add_listener(self, listener: Callable[[str, int, int], any]):
+  def add_listener(self, listener: Callable[[str, int, int], Any]):
     """
     Adds a listener (callback) function to invoke when a keypress is detected
 
@@ -102,7 +103,7 @@ class Keypad:
       raise ValueError("Keypad is closed")
     self.__listeners__.append(listener)
 
-  def remove_listener(self, listener: Callable[[str, int, int], any]):
+  def remove_listener(self, listener: Callable[[str, int, int], Any]):
     """
     Removes a listener (callback) function
 
@@ -116,13 +117,12 @@ class Keypad:
       raise ValueError("Keypad is closed")
     self.__listeners__.remove(listener)
 
-  def __poll_target_func__(self):
-    print(" ==> polling function started!")
+  def __poll_target_func__(self) -> None:
+    logging.info(" ==> polling function started!")
 
     poll_delay = self.key_delay / 1000000000
 
     while not self.__is_closed__:
-      result: tuple[int, int, str] = None
       for out_c_index, out_pin in enumerate(self.out_pins):
         GPIO.output(out_pin, GPIO.HIGH)
 
@@ -141,7 +141,7 @@ class Keypad:
 
       self.poll_sleeper.wait(poll_delay)
 
-    print(" ==> polling function done!")
+    logging.info(" ==> polling function done!")
 
   def __key_press_callback__(self, in_pin: int):
     if self.__is_closed__:
@@ -168,7 +168,7 @@ class Keypad:
         self.__propagate_to_listeners__(result[2], result[0], result[1])
 
   def __determine_key__(self, in_c_index: int, out_c_index: int, capture_time: int) -> tuple[int, int, str]:
-    result: tuple[int, int, str] = None
+    result: tuple[int, int, str] | None = None
     #print("=>",self.char_matrix[out_c_index][in_c_index], " | ", result)
 
     latest_key_detail = self.__key_map__[out_c_index][in_c_index]
@@ -196,7 +196,7 @@ class Keypad:
     """
 
     if isinstance(result[2], str) == False:
-      print("error!!! ", current_key_detail)
+      logging.error("error!!! ", current_key_detail)
 
     self.__key_map__[out_c_index][in_c_index] = current_key_detail
     return result
@@ -205,7 +205,7 @@ class Keypad:
     for listener in self.__listeners__:
       listener(character, out_pin, in_pin)
 
-  def correct_char_map(self, input_seq: list[str | tuple[str]]) -> list[list[str | tuple[str]]]:
+  def correct_char_map(self, input_seq: list[str | Sequence[str]]) -> list[list[str | Sequence[str]]]:
     """
     Corrects the char_matrix of this keypad by tracking keypad presses against a sequence of 
     expected inputs.
@@ -230,7 +230,7 @@ class Keypad:
     if len(input_seq) != sum([len(x) for x in self.char_matrix]):
       raise ValueError("Character input sequence must be equal to all characters in char_matrix")
     
-    corrected_mat: list[list[str | tuple[str]]] = [[None for _ in j] for j in self.char_matrix]
+    corrected_mat: list[list[str | Sequence[str] | None]] = [[None for _ in j] for j in self.char_matrix]
     corrected_chars = 0
 
     finished_input = Event()
@@ -239,16 +239,15 @@ class Keypad:
       nonlocal corrected_mat, corrected_chars
       if not corrected_mat[out_index][in_index]:
         correct_char = input_seq[corrected_chars]
-        oldValue = self.char_matrix[out_index][in_index]
 
-        if isinstance(oldValue, tuple):
-          self.char_matrix[out_index][in_index] = (correct_char, *oldValue[-(len(oldValue) - 1)::])
-          corrected_mat[out_index][in_index] = (correct_char, *oldValue[-(len(oldValue) - 1)::])
-        else:
+        if isinstance(correct_char, Sequence):
           self.char_matrix[out_index][in_index] = correct_char
           corrected_mat[out_index][in_index] = correct_char
+        else:
+          self.char_matrix[out_index][in_index] = (correct_char,)
+          corrected_mat[out_index][in_index] = (correct_char,)
 
-        #print(f" ==> old char at ({out_index}, {in_index}) => {character} IS NOW {self.char_matrix[out_index][in_index]} | {corrected_chars} | {len(input_seq)} | {type(oldValue)}")
+        logging.debug(f" ==> old char at ({out_index}, {in_index}) => {character} IS NOW {self.char_matrix[out_index][in_index]} | {corrected_chars} | {len(input_seq)} | {type(oldValue)}")
         corrected_chars += 1
 
       if corrected_chars == len(input_seq):
@@ -263,7 +262,7 @@ class Keypad:
 
     #print(" => done ", self.char_matrix, "\n", corrected_mat)
 
-    return corrected_mat
+    return cast(list[list[str | Sequence[str]]], corrected_mat)
 
   def __enter__(self):
     return self.start()
@@ -307,7 +306,7 @@ try:
   def key_l(c: str, out: int, inp: int):
     print(" ==> received: ", c, f" ({out}, {inp})")
 
-  cMap = [
+  cMap: list[list[str | Sequence[str]]] = [
     ['*', '0', '#'], 
     ['7', ('8', "T", "U", "V"), '9'], 
     ['4', '5', '6'], 
