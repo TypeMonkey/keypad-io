@@ -20,3 +20,9 @@ classifiers = [
 [project.urls]
 Homepage = "https://github.com/TypeMonkey/keypad-io"
 Issues = "https://github.com/TypeMonkey/keypad-io/issues"
+
+[tool.setuptools.package-data]
+"keypad" = ["py.typed"]
+
+[tool.setuptools.packages.find]
+where = ["src"]
