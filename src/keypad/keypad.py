@@ -290,31 +290,3 @@ class Keypad:
           GPIO.remove_event_detect(in_pin)
       
       GPIO.cleanup(self.in_pins + self.out_pins)
-
-try:
-  GPIO.setwarnings(False)
-  GPIO.setmode(GPIO.BCM)
-
-  cMap_old = [
-    ["1","2","3"],
-    ["4","5","6"],
-    ["7","8","9"],
-    ["*","0","#"]
-  ]
-  
-
-  def key_l(c: str, out: int, inp: int):
-    print(" ==> received: ", c, f" ({out}, {inp})")
-
-  cMap: list[list[str | Sequence[str]]] = [
-    ['*', '0', '#'], 
-    ['7', ('8', "T", "U", "V"), '9'], 
-    ['4', '5', '6'], 
-    ['1', '2', '3']]
-  with Keypad([26,19,13], [17,27,22,10], cMap, initial_listeners=[], poll=False) as k:
-    #print(k.correct_char_map("123456789*0#"))
-    #print("==> done!!!")
-    k.add_listener(key_l)
-    signal.pause()
-except KeyboardInterrupt:
-  print("\nApplication stopped!")
