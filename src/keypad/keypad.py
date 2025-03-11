@@ -6,6 +6,11 @@ from threading import Thread, Event
 import logging
 
 class Keypad:
+  """
+  Represents a n x m matrix keypad
+  """
+
+
   in_pins: list[int]
   out_pins: list[int]
   char_matrix: list[list[Sequence[str]]]
@@ -41,12 +46,12 @@ class Keypad:
     Parameters:
     ins (list[int]) - list of GPIO pin numbers to be considered as the input pins
     outs (list[int]) - list of GPIO pin numbers to be considered as the output pins
-    char_matrix (list[list[str | tuple[str, list[str], float]]]) - a len(outs) by len(ins) matrix determining the 
+    char_matrix (list[list[str | Sequence[str]]]) - a len(outs) by len(ins) matrix determining the 
                                                                    characters per output-input pin press
-    poll (bool) - whether to determine key presses via continual polling of keypad, or interupts. (default: True)
-    key_delay (int) - the amount of miliseconds to wait before re-scanning the keypad for key presses (default: 0.1 seconds)
+    poll (bool) - whether to determine key presses via continual polling of keypad, or interupts. (default: False)
+    key_delay (int) - the amount of miliseconds to wait before re-scanning the keypad for key presses (default: 100 seconds)
     secondary_max_gap (int) - the max amount of miliseconds to wait between pressing the same key to cycle to the
-                                          next secondary character choice (default: 0.075)
+                                          next secondary character choice (default: 0200)
     stop_immediate (bool) - whether to return the most immediate pressed character (default: True)
     initial_listeners (list[Callable[[str, int, int], any]]) - initial list of callback/listener functions (default: [])
 
@@ -74,7 +79,7 @@ class Keypad:
     self.__listeners__ = list(initial_listeners)
 
     self.__is_closed__ = False
-    self.__key_map__ = [[( (x) if isinstance(x, str) else x, -1, 0) for x in h] for h in self.char_matrix]
+    self.__key_map__ = [[( (x,) if isinstance(x, str) else x, -1, 0) for x in h] for h in self.char_matrix]
       
     
     GPIO.setup(self.out_pins, GPIO.OUT, initial=GPIO.LOW)
@@ -95,6 +100,11 @@ class Keypad:
 
     Parameters:
     listener: Callable[[str, int, int] - the listener/callback function to add
+
+    Note: a callback function should have the following arguments (from left to right):
+          -> str (the character detected)
+          -> int (the index of the output pin in self.out_pins)
+          -> int (the index of the output pin in self.in_pins)
 
     Raises a ValueError if this keypad has been closed
     """
@@ -118,6 +128,13 @@ class Keypad:
     self.__listeners__.remove(listener)
 
   def __poll_target_func__(self) -> None:
+    """
+    Target function of the polling thread, which continually scans
+    the keypad for pressed keys
+    """
+    if self.__is_closed__:
+      return
+
     logging.info(" ==> polling function started!")
 
     poll_delay = self.key_delay / 1000000000
@@ -144,10 +161,13 @@ class Keypad:
     logging.info(" ==> polling function done!")
 
   def __key_press_callback__(self, in_pin: int):
+    """
+    Callback function that RPi.GPIO calls when a change is detected
+    """
     if self.__is_closed__:
       return
 
-    #print("===> input detected at ", in_pin)
+    logging.info("===> input detected at ", in_pin)
 
     if not GPIO.input(in_pin):
       in_c_index = self.in_pins.index(in_pin)
@@ -168,6 +188,11 @@ class Keypad:
         self.__propagate_to_listeners__(result[2], result[0], result[1])
 
   def __determine_key__(self, in_c_index: int, out_c_index: int, capture_time: int) -> tuple[int, int, str]:
+    """
+    Determins the correct character for the corresponding key that was pressed
+    given the time it was captured, and when that key was previously pressed
+    """
+
     result: tuple[int, int, str] | None = None
     #print("=>",self.char_matrix[out_c_index][in_c_index], " | ", result)
 
@@ -202,25 +227,33 @@ class Keypad:
     return result
     
   def __propagate_to_listeners__(self, character: str, out_pin: int, in_pin: int):
+    """
+    Propogates a detected key press to listeners
+    """
     for listener in self.__listeners__:
       listener(character, out_pin, in_pin)
 
-  def correct_char_map(self, input_seq: list[str | Sequence[str]]) -> list[list[str | Sequence[str]]]:
+  def correct_char_map(self, input_seq: str | list[str | Sequence[str]]) -> list[list[str | Sequence[str]]]:
     """
     Corrects the char_matrix of this keypad by tracking keypad presses against a sequence of 
     expected inputs.
+
+    This is a convenient method for getting a correct char_map after physically wiring your keypad
+    (and all the trouble of keeping tracking which input pin correlates to which columns on the keypad, etc..)
+
+    After getting the corrected char_map from this method, you can edit your code that the correct mapping
+    is provided (so essentially, this is intended to be a one-time use method)
 
     Note: This method corrects the primary character per key and will preserve existing secondary choices
           and their time window. If you're looking to also change secondary choices, consider directly changing
           char_matrix
 
     Parameters:
-    input_seq list[str | tuple[str]]) - sequence of characters to match unique keypad presses against
+    input_seq (str | list[str | Sequence[str]]) - sequence of characters (and possible secondary choices) to 
+                                            match unique keypad presses against
 
     Returns:
-    (int, int, str) - The first two ints indicate the index of the 
-                      output and input pin in out_pins and in_pins repectively.
-                      The str is the pressed character, as dictated by char_matrix
+    list[list[str | Sequence[str]]] - The corrected character mapping
 
     Raises a ValueError keypad has been closed, or len(input_seq) != the sum of all primary choices in char_matrix
     """
@@ -247,7 +280,7 @@ class Keypad:
           self.char_matrix[out_index][in_index] = (correct_char,)
           corrected_mat[out_index][in_index] = (correct_char,)
 
-        logging.debug(f" ==> old char at ({out_index}, {in_index}) => {character} IS NOW {self.char_matrix[out_index][in_index]} | {corrected_chars} | {len(input_seq)} | {type(oldValue)}")
+        logging.debug(f" ==> old char at ({out_index}, {in_index}) => {character} IS NOW {self.char_matrix[out_index][in_index]} | {corrected_chars} | {len(input_seq)}")
         corrected_chars += 1
 
       if corrected_chars == len(input_seq):
@@ -258,7 +291,7 @@ class Keypad:
     self.remove_listener(key_listener)
 
     # Re-do self.__key_map__ so character pin pointing in callback is correct
-    self.__key_map__ = [[( (x) if isinstance(x, str) else x, -1, 0) for x in h] for h in self.char_matrix]
+    self.__key_map__ = [[( (x,) if isinstance(x, str) else x, -1, 0) for x in h] for h in self.char_matrix]
 
     #print(" => done ", self.char_matrix, "\n", corrected_mat)
 
@@ -271,6 +304,13 @@ class Keypad:
     self.close()
 
   def start(self) -> Self:
+    """
+    Starts this Keypad. It's UNNECESSARY to call this function
+    if the keypad is on interrupt mode (i.e: poll=False was passed to the constructor)
+
+    Returns:
+    This Keypad
+    """
     if self.__is_closed__:
       raise ValueError("keypad object has been closed")
 
@@ -279,6 +319,13 @@ class Keypad:
     return self
 
   def close(self):
+    """
+    Closes this Keypad. This method invokes RPi.GPIO.cleanup() on
+    the given input and output pins when constructing this Keypad
+
+    If this keypad is on interrupt mode, it invokes RPi.GPIO.cleanup()
+    on the input pins.
+    """
     if not self.__is_closed__:
       self.__is_closed__ = True
 

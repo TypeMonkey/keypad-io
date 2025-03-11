@@ -69,11 +69,13 @@ try:
 
   """
   Creates a Keypad with out set input_pins and output_pins, as well as character mapping.
+  By giving poll=True, this Keypad will rely on continually polling the provided pins
+  for key presses.
 
   We set key_l as an initial listener, and we want characters to be detected via polling
   rather than interrupts (which is the default)
   """
-  with Keypad(input_pins, output_pins, char_map, initial_listeners=[key_l], poll=True) as k:
+  with Keypad(input_pins, output_pins, char_map, poll=True) as k:
     k.add_listener(key_l)
     signal.pause()
   
