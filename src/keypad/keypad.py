@@ -1,6 +1,5 @@
 import RPi.GPIO as GPIO
 import time
-import signal
 from typing import Callable, Self, Sequence, Any, cast
 from threading import Thread, Event
 import logging
@@ -18,7 +17,7 @@ class Keypad:
   poll_sleeper: Event
   key_delay: int
   secondary_max_gap: int
-  __listeners__: list[Callable[[str, int, int], Any]]
+  __listeners__: list[Callable[[str, int, int, int], Any]]
 
   """
   tuple[list[str], int, int]
@@ -39,7 +38,7 @@ class Keypad:
     key_delay: int = 100,
     secondary_max_gap: int = 200,
     stop_immediate: bool = True,
-    initial_listeners: list[Callable[[str, int, int], Any]] = []):
+    initial_listeners: list[Callable[[str, int, int, int], Any]] = []):
     """
     Creates a Keypad
 
@@ -91,10 +90,10 @@ class Keypad:
     else:
       GPIO.setup(self.in_pins, GPIO.IN, pull_up_down=GPIO.PUD_DOWN)
 
-    logging.info("Input pins: ", ins)
-    logging.info("Output pins: ", outs)
+    logging.info("Input pins: %s", ins)
+    logging.info("Output pins: %s", outs)
 
-  def add_listener(self, listener: Callable[[str, int, int], Any]):
+  def add_listener(self, listener: Callable[[str, int, int, int], Any]):
     """
     Adds a listener (callback) function to invoke when a keypress is detected
 
@@ -113,7 +112,7 @@ class Keypad:
       raise ValueError("Keypad is closed")
     self.__listeners__.append(listener)
 
-  def remove_listener(self, listener: Callable[[str, int, int], Any]):
+  def remove_listener(self, listener: Callable[[str, int, int, int], Any]):
     """
     Removes a listener (callback) function
 
@@ -152,7 +151,7 @@ class Keypad:
 
             if self.stop_immediate:
               #print(" ===> propagating ", result)
-              self.__propagate_to_listeners__(result[2], result[0], result[1])
+              self.__propagate_to_listeners__(result[2], result[0], result[1], result[3])
               break
         GPIO.output(out_pin, GPIO.LOW)
 
@@ -185,15 +184,15 @@ class Keypad:
           break
       
       if result:
-        self.__propagate_to_listeners__(result[2], result[0], result[1])
+        self.__propagate_to_listeners__(result[2], result[0], result[1], result[3])
 
-  def __determine_key__(self, in_c_index: int, out_c_index: int, capture_time: int) -> tuple[int, int, str]:
+  def __determine_key__(self, in_c_index: int, out_c_index: int, capture_time: int) -> tuple[int, int, str, int]:
     """
     Determins the correct character for the corresponding key that was pressed
     given the time it was captured, and when that key was previously pressed
     """
 
-    result: tuple[int, int, str] | None = None
+    result: tuple[int, int, str, int] | None = None
     #print("=>",self.char_matrix[out_c_index][in_c_index], " | ", result)
 
     latest_key_detail = self.__key_map__[out_c_index][in_c_index]
@@ -206,10 +205,10 @@ class Keypad:
         #print(" => outside window. Resetting")
         current_key_detail = (current_key_detail[0], current_key_detail[1], 0)
       #print(" ==> cur: ", current_key_detail)
-      result = (out_c_index, in_c_index, current_key_detail[0][current_key_detail[2]])
+      result = (out_c_index, in_c_index, current_key_detail[0][current_key_detail[2]], current_key_detail[2])
     else:
       current_key_detail = (current_key_detail[0], current_key_detail[1], 0)
-      result = (out_c_index, in_c_index, latest_key_detail[0][0])
+      result = (out_c_index, in_c_index, latest_key_detail[0][0], 0)
 
     """
     print(" ==> ", \
@@ -226,12 +225,12 @@ class Keypad:
     self.__key_map__[out_c_index][in_c_index] = current_key_detail
     return result
     
-  def __propagate_to_listeners__(self, character: str, out_pin: int, in_pin: int):
+  def __propagate_to_listeners__(self, character: str, out_pin: int, in_pin: int, c_index: int):
     """
     Propogates a detected key press to listeners
     """
     for listener in self.__listeners__:
-      listener(character, out_pin, in_pin)
+      listener(character, out_pin, in_pin, c_index)
 
   def correct_char_map(self, input_seq: str | list[str | Sequence[str]]) -> list[list[str | Sequence[str]]]:
     """
@@ -268,7 +267,7 @@ class Keypad:
 
     finished_input = Event()
 
-    def key_listener(character: str, out_index: int, in_index: int):
+    def key_listener(character: str, out_index: int, in_index: int, _: int):
       nonlocal corrected_mat, corrected_chars
       if not corrected_mat[out_index][in_index]:
         correct_char = input_seq[corrected_chars]

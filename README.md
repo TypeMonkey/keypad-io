@@ -47,7 +47,13 @@ try:
   """
   Callback function to be invoked when a key press is detected
   """
-  def key_l(c: str, out: int, inp: int):
+  def key_l(c: str, out: int, inp: int, c_index: int):
+    """
+    c (str) - the character that was entered
+    out (int) - the output/row pin that was detected with this key press
+    inp (int) - the input/column pin that was detected with this key press
+    c_index (int) - the index of "c" from the keypad's character mapping (see below)
+    """
     print(" ==> received: ", c, f" ({out}, {inp})")
   
   """
